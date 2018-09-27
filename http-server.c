@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/time.h>
 
 #define PORT 8085
 
@@ -86,14 +87,12 @@ char* str_replace(char* string, const char* substr, const char* replacement) {
 }
 
 void send_http(int request_socket, char* status, char* body){
-    const char* format = "HTTP/1.1 %s\nContent-Length: %d\nConnection: close\nContent-Type: text/html; charset=UTF-8\n\n";
+    const char* format = "HTTP/1.1 %s\nContent-Length: %d\nConnection: close\nContent-Type: text/html; charset=UTF-8\nServer: DefinitelyNotApache/1.0 (Windows)  (Baidu/Linux)\nCache-Control: no-cache, no-store, must-revalidate\nPragma: no-cache\nExpires: 0\n\n";
 
     char payload[10000];
 
     sprintf(payload, format, status, strlen(body));
     strcat(payload, body);
-
-    printf("%s\n", payload);
 
     send(request_socket, payload, strlen(payload), 0);
 }
@@ -188,10 +187,12 @@ int main()
     }
 
     // bota o socket do server em modo listening
-    if (listen(server_socket, 3) < 0){
+    if (listen(server_socket, 1) < 0){
         perror("listen");
         exit(EXIT_FAILURE);
     }
+
+    printf("Server listening at %d\n", PORT);
 
     while(1)
     {
@@ -205,6 +206,15 @@ int main()
             perror("accept");
             exit(EXIT_FAILURE);
         }
+
+        printf("Request received\n");
+
+        // define timeout para receber todos os dados
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 500000; //500ms
+        setsockopt(request_socket, SOL_SOCKET, SO_SNDTIMEO,(struct timeval *)&timeout,sizeof(struct timeval));
+        setsockopt(request_socket, SOL_SOCKET, SO_RCVTIMEO,(struct timeval *)&timeout,sizeof(struct timeval));
 
         REQUEST_DATA* request_data = NULL;
 
@@ -248,8 +258,9 @@ int main()
             reply_file(request_socket, path, request_data);
 
         printf("Reply sent\n");
+        shutdown(request_socket, SHUT_RDWR);
         close(request_socket);
-        
+
         req_data_free(request_data);
     }
     return 0;
