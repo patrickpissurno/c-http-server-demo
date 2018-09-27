@@ -184,10 +184,10 @@ int main()
         int request_socket;
 
         struct sockaddr_in client_address;
-        int client_address_length = 0;
+        socklen_t client_address_length = sizeof(client_address);
 
         // aguarda conexao e aceita
-        if ((request_socket = accept(server_socket, (struct sockaddr *)&client_address, (socklen_t*)&client_address_length)) < 0){
+        if ((request_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_address_length)) < 0){
             perror("accept");
             exit(EXIT_FAILURE);
         }
