@@ -5,8 +5,31 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #define PORT 8085
+
+typedef struct REQUEST_DATA {
+    char key[200];
+    char value[200];
+    struct REQUEST_DATA* next;
+} REQUEST_DATA;
+
+REQUEST_DATA* req_data_push(REQUEST_DATA* list, char* key, char* value){
+    REQUEST_DATA* item = (REQUEST_DATA*)malloc(sizeof(REQUEST_DATA));
+    item -> next = list;
+    strcpy(item -> key, key);
+    strcpy(item -> value, value);
+    return item;
+}
+
+void req_data_free(REQUEST_DATA* list){
+    if(list == NULL)
+        return;
+    if(list -> next != NULL)
+        req_data_free(list -> next);
+    free(list);
+}
 
 // https://github.com/irl/la-cucina/blob/master/str_replace.c
 char* str_replace(char* string, const char* substr, const char* replacement) {
@@ -65,7 +88,7 @@ void reply_error(int request_socket, char* status){
     send_http(request_socket, status, status);
 }
 
-void reply_file(int request_socket, char* filename){
+void reply_file(int request_socket, char* filename, REQUEST_DATA* request_data){
     //remove o / do inicio
     sscanf(filename, " /%s", filename);
 
@@ -105,8 +128,17 @@ void reply_file(int request_socket, char* filename){
     if(strstr(filename, ".mustache") != NULL){
         char* parsing = (char*)(malloc(sizeof(char) * 8192));
         strcpy(parsing, body);
-        parsing = str_replace(parsing, "{{method}}", "GET");
-        parsing = str_replace(parsing, "{{url}}", filename);
+
+
+        REQUEST_DATA* item = request_data;
+        while(item != NULL){
+            char key[205] = "{{";
+            strcat(key, item -> key);
+            strcat(key, "}}");
+            parsing = str_replace(parsing, key, item -> value);
+            item = item -> next;
+        }
+
         strcpy(body, parsing);
         free(parsing);
     }
@@ -160,6 +192,14 @@ int main()
             exit(EXIT_FAILURE);
         }
 
+        REQUEST_DATA* request_data = NULL;
+
+        //nao ta pegando o valor certo do ip
+        if(client_address.sin_family == AF_INET)
+            request_data = req_data_push(request_data, "address", (char*)inet_ntoa(client_address.sin_addr));
+        else
+            request_data = req_data_push(request_data, "address", "localhost");
+
         //le a requisicao
         char buffer[1024];
         read(request_socket, buffer, 1024);
@@ -168,13 +208,18 @@ int main()
         char path[200];
         sscanf(buffer, "%s %s", method, path);
 
+        request_data = req_data_push(request_data, "method", method);
+        request_data = req_data_push(request_data, "path", path);
+
         if(strcmp(method, "GET") != 0)
             reply_error(request_socket, "404 Not Found");
         else
-            reply_file(request_socket, path);
+            reply_file(request_socket, path, request_data);
 
         printf("Reply sent\n");
         close(request_socket);
+        
+        req_data_free(request_data);
     }
     return 0;
 }
