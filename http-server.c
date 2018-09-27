@@ -8,6 +8,46 @@
 
 #define PORT 8085
 
+// https://github.com/irl/la-cucina/blob/master/str_replace.c
+char* str_replace(char* string, const char* substr, const char* replacement) {
+	char* tok = NULL;
+	char* newstr = NULL;
+	char* oldstr = NULL;
+	int   oldstr_len = 0;
+	int   substr_len = 0;
+	int   replacement_len = 0;
+
+	newstr = strdup(string);
+	substr_len = strlen(substr);
+	replacement_len = strlen(replacement);
+
+	if (substr == NULL || replacement == NULL) {
+		return newstr;
+	}
+
+	while ((tok = strstr(newstr, substr))) {
+		oldstr = newstr;
+		oldstr_len = strlen(oldstr);
+		newstr = (char*)malloc(sizeof(char) * (oldstr_len - substr_len + replacement_len + 1));
+
+		if (newstr == NULL) {
+			free(oldstr);
+			return NULL;
+		}
+
+		memcpy(newstr, oldstr, tok - oldstr);
+		memcpy(newstr + (tok - oldstr), replacement, replacement_len);
+		memcpy(newstr + (tok - oldstr) + replacement_len, tok + substr_len, oldstr_len - substr_len - (tok - oldstr));
+		memset(newstr + oldstr_len - substr_len + replacement_len, 0, 1);
+
+		free(oldstr);
+	}
+
+	free(string);
+
+	return newstr;
+}
+
 void send_http(int request_socket, char* status, char* body){
     const char* format = "HTTP/1.1 %s\nContent-Length: %d\nConnection: close\nContent-Type: text/html; charset=UTF-8\n\n";
 
@@ -30,11 +70,28 @@ void reply_file(int request_socket, char* filename){
     sscanf(filename, " /%s", filename);
 
     if(strcmp(filename, "/") == 0)
-        filename = "index.html";
+        filename = "index.mustache";
 
     FILE* file = fopen(filename, "r");
-    if(file == NULL)
-        return reply_error(request_socket, "404 Not Found");
+    if(file == NULL){
+        char temp[120];
+        strcpy(temp, filename);
+        strcat(temp, ".mustache");
+
+        file = fopen(temp, "r");
+        if(file == NULL){
+            strcpy(temp, filename);
+            strcat(temp, ".html");
+            
+            file = fopen(temp, "r");
+            if(file == NULL)
+                return reply_error(request_socket, "404 Not Found");
+            else
+                strcpy(filename, temp);
+        }
+        else
+            strcpy(filename, temp);
+    }
 
     char body[8192] = "";
 
@@ -44,6 +101,15 @@ void reply_file(int request_socket, char* filename){
         strcat(body, temp);
     
     fclose(file);
+
+    if(strstr(filename, ".mustache") != NULL){
+        char* parsing = (char*)(malloc(sizeof(char) * 8192));
+        strcpy(parsing, body);
+        parsing = str_replace(parsing, "{{method}}", "GET");
+        parsing = str_replace(parsing, "{{url}}", filename);
+        strcpy(body, parsing);
+        free(parsing);
+    }
 
     send_http(request_socket, "200 OK", body);
 }
