@@ -4,8 +4,9 @@
 #include <sys/socket.h>
 #include <stdlib.h>
 #include <netinet/in.h>
-#include <string.h>
 #include <arpa/inet.h>
+#include <string.h>
+#include <ctype.h>
 
 #define PORT 8085
 
@@ -29,6 +30,19 @@ void req_data_free(REQUEST_DATA* list){
     if(list -> next != NULL)
         req_data_free(list -> next);
     free(list);
+}
+
+// https://stackoverflow.com/a/23618467
+char* strlwr(char* str)
+{
+    unsigned char* p = (unsigned char *)str;
+
+    while (*p) {
+        *p = tolower((unsigned char)*p);
+        p++;
+    }
+
+    return str;
 }
 
 // https://github.com/irl/la-cucina/blob/master/str_replace.c
@@ -204,9 +218,26 @@ int main()
         char buffer[1024];
         read(request_socket, buffer, 1024);
 
+        int offset;
+
         char method[10];
         char path[200];
-        sscanf(buffer, "%s %s", method, path);
+        char version[50];
+        sscanf(buffer, " %s %s %s%n", method, path, version, &offset);
+        
+        // faz a extracao dos headers
+        char* buffer_cursor = buffer + offset;
+        char line[500];
+        while(sscanf(buffer_cursor, " %[^\n]s", line) == 1){
+            char key[200];
+            char value[200];
+            if(sscanf(line, "%[^:]: %s", key, value) == 2){
+                strlwr(key);
+                request_data = req_data_push(request_data, key, value);
+            }
+
+            buffer_cursor += strlen(line);
+        }
 
         request_data = req_data_push(request_data, "method", method);
         request_data = req_data_push(request_data, "path", path);
