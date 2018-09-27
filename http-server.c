@@ -9,7 +9,7 @@
 #include <ctype.h>
 #include <sys/time.h>
 
-#define PORT 8085
+#define PORT 80
 
 typedef struct REQUEST_DATA {
     char key[200];
